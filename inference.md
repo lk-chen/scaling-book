@@ -562,7 +562,7 @@ For this sharding, what is the rough per-step latency for generation?
 
 (3) The KV cache size stays the same as the MoE character doesn't change anything about the attention mechanism.
 
-(4) This is still $2ND$ where $D$ is the activated parameter count. Thus this is $2 * \text{32.2e9} * T$.
+(4) This is still $2ND$ where $D$ is the activated parameter count. Thus this is $2 * \text{31.2e9} * T$.
 
 {% enddetails %}
 
