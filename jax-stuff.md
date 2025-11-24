@@ -266,7 +266,7 @@ Sadly, this is bad because it doesn't allow us to overlap the communication with
 
 * For each Y shard, perform a matmul of the local chunk of A with the local chunk of W, producing a result of shape `[B / X, F / Y]`. Simultaneously, permute A so you get the next chunk locally, perform the matmul, and sum the result.
 
-We can implement that quite easily with shard\_map:
+We can implement that quite easily with `jax.shard_map`:
 
 ```py
 import functools
@@ -276,6 +276,9 @@ import jax.numpy as jnp
 import jax.sharding as shd
 import numpy as np
 
+# This is intended to run on a TPU v5e-8 runtime. If you can't get this,
+# try setting jax.config.update('jax_num_cpu_devices', 8).
+#
 mesh = jax.make_mesh(axis_shapes=(2, 4), axis_names=('X', 'Y'),
                                        axis_types=(shd.AxisType.Explicit, shd.AxisType.Explicit))
 jax.set_mesh(mesh)
