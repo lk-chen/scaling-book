@@ -128,7 +128,7 @@ out = jit_matmul(In, W)
 
 This will run automatically with any sharding and partition the computation across our devices. **But what's actually happening at the hardware level?**
 
-1. First we create In and W sharded across our devices<d-footnote>Notice how we did this.  This is one way to create an array with a particular sharding (i.e. by adding the device argument to the creation function). Another one is to create an array normally with `jnp.array(....)` and then do e.g. `jax.device_put(..., P('x', 'y'))`.  Yet another is to write a function which creates the array you want, and jit-compile it with `out_shardings` being what you want.</d-footnote>. W is sharded 2 way along the contracting dimension, while In is sharded 4-ways (along both the contracting and output dimensions). This corresponds to a sharding W[D<sub>Y</sub>, F] and In[B<sub>X</sub>, D<sub>Y</sub>], aka a kind of model and data parallelism.
+1. First we create In and W sharded across our devices<d-footnote>Notice how we did this.  This is one way to create an array with a particular sharding (i.e. by adding the device argument to the creation function). Another one is to create an array normally with `jnp.array(....)` and then do e.g. `jax.device_put(..., jax.P('x', 'y'))`.  Yet another is to write a function which creates the array you want, and jit-compile it with `out_shardings` being what you want.</d-footnote>. W is sharded 2 way along the contracting dimension, while In is sharded 4-ways (along both the contracting and output dimensions). This corresponds to a sharding W[D<sub>Y</sub>, F] and In[B<sub>X</sub>, D<sub>Y</sub>], aka a kind of model and data parallelism.
 2. If we were running this locally (i.e. on one device), `matmul_square` would simply square the input and perform a simple matmul. But because we specify the `out_shardings` as `P('X', None)`, the output will be sharded along the batch but replicated across the model dimension and will require an AllReduce to compute.
 
 Using our notation from previous sections, this will likely do something like
@@ -180,7 +180,7 @@ mesh = jax.make_mesh(axis_shapes=(2, 2), axis_names=('X', 'Y'),
 # This tells JAX to use this mesh for all operations, so you can just specify the PartitionSpec P.
 jax.set_mesh(mesh)
 
-x = jax.device_put(np.arange(16).reshape(8, 2), P('X', 'Y'))
+x = jax.device_put(np.arange(16).reshape(8, 2), jax.P('X', 'Y'))
 
 @jax.jit
 def f(x):
@@ -219,7 +219,7 @@ Unlike Auto mode, explicit mode errors out when it detects ambiguous communicati
 ```py
 @jax.jit
 def matmul_square(In, W):
-  return jnp.einsum('bd,df->bf', jnp.square(In), W, out_sharding=P('X', 'Y'))
+  return jnp.einsum('bd,df->bf', jnp.square(In), W, out_sharding=jax.P('X', 'Y'))
 
 out = matmul_square(In, W)
 print(jax.typeof(out))  # bfloat16[8@X,8192@Y]
@@ -367,24 +367,22 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-P = jax.sharding.PartitionSpec
-
 mesh = jax.make_mesh((4, 2), ('X','Y'))
 
 average_shmap = jax.shard_map(
     lambda x: x.mean(keepdims=True),
     mesh=mesh,
-    in_specs=P('X','Y'), out_specs=P('X','Y')
+    in_specs=jax.P('X','Y'), out_specs=jax.P('X','Y')
 )
 
 def average(x):
   X, Y = mesh.axis_sizes
   return x.reshape(X, x.shape[0] // X, Y, x.shape[1] // Y).mean(axis=(1, 3))
 
-average_jit = jax.jit(average, out_shardings=jax.NamedSharding(mesh, P('X','Y')))
+average_jit = jax.jit(average, out_shardings=jax.NamedSharding(mesh, jax.P('X','Y')))
 
 x = jnp.arange(8 * 64 * 8, dtype=jnp.int32).reshape(8 * 64, 8)
-x = jax.device_put(x, jax.NamedSharding(mesh, P('X','Y')))
+x = jax.device_put(x, jax.NamedSharding(mesh, jax.P('X','Y')))
 
 y1 = average_shmap(x)
 y2 = average_jit(x)
@@ -410,18 +408,18 @@ def shift_shmap(x, shift: int):
   shmapped = jax.shard_map(
       lambda x: jnp.roll(x, shift, axis=0),
       mesh=mesh,
-      in_specs=P('X','Y'), out_specs=P('X','Y')
+      in_specs=jax.P('X','Y'), out_specs=jax.P('X','Y')
   )
   return shmapped(x)
 
-@functools.partial(jax.jit, static_argnames=['shift'], out_shardings=jax.NamedSharding(mesh, P('X','Y')))
+@functools.partial(jax.jit, static_argnames=['shift'], out_shardings=jax.NamedSharding(mesh, jax.P('X','Y')))
 def shift_jit(x, shift: int):
   X, Y = mesh.axis_sizes
   reshaped = x.reshape(X, x.shape[0] // X, -1)
   return jnp.roll(reshaped, shift, axis=1).reshape(x.shape[0], x.shape[1])
 
 x = jnp.arange(8 * 64 * 8, dtype=jnp.int32).reshape(8 * 64, 8)
-x = jax.device_put(x, jax.NamedSharding(mesh, P('X','Y')))
+x = jax.device_put(x, jax.NamedSharding(mesh, jax.P('X','Y')))
 
 y1 = shift_shmap(x, 5)
 y2 = shift_jit(x, 5)
